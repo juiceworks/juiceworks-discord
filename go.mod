@@ -1,4 +1,4 @@
-module github.com/juiceworks/jimmy
+module github.com/juiceworks/juiceworks-discord
 
 go 1.22.5
 
