@@ -14,8 +14,10 @@ import (
 
 const (
 	JuiceworksGuildId    = "1256628364987600977"
+	InternalChannelId    = "1256628365771669556"
 	JuiceworksRoleId     = "1257752490372370503"
 	ProjectCreatorRoleId = "1259262543034060830"
+	ServicesRoleId       = "1260738526425780264"
 )
 
 var commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
@@ -101,6 +103,18 @@ func addMember(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
+	// Prevent adding new members to the internal channel.
+	if i.ChannelID == InternalChannelId {
+		logResponseErr(s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "This command cannot be used in the internal channel.",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		}))
+		return
+	}
+
 	// Verify the command options.
 	options := i.ApplicationCommandData().Options
 	if len(options) == 0 || options[0].Type != discordgo.ApplicationCommandOptionUser {
@@ -115,17 +129,42 @@ func addMember(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 	user := options[0].UserValue(s)
 
-	// Grant the Project Creator role to the user.
-	if err := s.GuildMemberRoleAdd(JuiceworksGuildId, user.ID, ProjectCreatorRoleId); err != nil {
-		log.Printf("Error granting Project Creator role: %v", err)
+	// Get the user's roles
+	member, err := s.GuildMember(JuiceworksGuildId, user.ID)
+	if err != nil {
+		log.Printf("Error reading member roles: %v", err)
 		logResponseErr(s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				Content: "Error granting Project Creator role: " + err.Error(),
+				Content: "Error reading member roles: " + err.Error(),
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		}))
 		return
+	}
+
+	// Check if the user is a service provider
+	isServiceProvider := false
+	for _, roleID := range member.Roles {
+		if roleID == ServicesRoleId {
+			isServiceProvider = true
+			break
+		}
+	}
+
+	// If the user isn't a service provider, grant them the Project Creator role.
+	if !isServiceProvider {
+		if err := s.GuildMemberRoleAdd(JuiceworksGuildId, user.ID, ProjectCreatorRoleId); err != nil {
+			log.Printf("Error granting Project Creator role: %v", err)
+			logResponseErr(s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Error granting Project Creator role: " + err.Error(),
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			}))
+			return
+		}
 	}
 
 	// Add the user to the channel the command was called from.
